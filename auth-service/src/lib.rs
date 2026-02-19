@@ -1,7 +1,10 @@
 use std::error::Error;
 
-use axum::{Router, http::StatusCode, response::IntoResponse, routing::post};
+use axum::{Router, routing::post};
 use tower_http::services::ServeDir;
+
+pub mod routes;
+use routes::{signup, login, logout, verify_2fa, verify_token};
 
 // This struct encapsulates our application-related logic.
 pub struct Application {
@@ -37,23 +40,11 @@ impl Application {
 }
 
 
-// route handlers
-async fn signup() -> impl IntoResponse {
-    StatusCode::OK.into_response()
-}
 
-async fn login() -> impl IntoResponse {
-    StatusCode::OK.into_response()
-}
 
-async fn logout() -> impl IntoResponse {
-    StatusCode::OK.into_response()
-}
 
-async fn verify_2fa() -> impl IntoResponse {
-    StatusCode::OK.into_response()
-}
 
-async fn verify_token() -> impl IntoResponse {
-    StatusCode::OK.into_response()
-}
+
+
+
+
