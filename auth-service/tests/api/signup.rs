@@ -5,11 +5,42 @@ async fn should_return_422_if_malformed_input() {
     let app = TestApp::new().await;
     let random_email = get_random_email();
 
-    let test_case = serde_json::json!({
-        "email": random_email,
-        "password": "password123"
-    });
+    let test_cases = [
 
-    let response = app.post_signup(&test_case).await;
-    assert_eq!(response.status().as_u16(), 200);
+        // missing email
+        serde_json::json!({
+        "password": "password123",
+        "requires2FA": false,
+        }),
+
+        // missing password
+        serde_json::json!({
+        "email": random_email,
+        "requires2FA": true,
+        }),
+
+        // missing 2FA
+        serde_json::json!({
+        "email": random_email,
+        "password": ""
+        }),
+
+        // integer email (String required by SignupRequest Struct)
+        serde_json::json!({
+        "email": 8,
+        "password": ""
+        }),
+        serde_json::json!({}),
+    ];
+
+    for test in test_cases.iter() {
+        let response = app.post_signup(test).await;
+        assert_eq!(response.status().as_u16(), 
+                    422,
+                    "Failed for input, {:?}",
+                    test
+                );
+    }
+
+
 }
