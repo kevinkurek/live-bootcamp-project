@@ -48,8 +48,6 @@ impl HashmapUserStore {
 #[cfg(test)]
 mod tests {
 
-    use std::result;
-
     use super::*;
 
     fn setup() -> (HashmapUserStore, String, String, User) {
