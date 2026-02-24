@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
-use crate::domain::{User, UserStoreError, UserStore};
+use crate::domain::{User, UserStoreError, UserStore, Email, Password};
 
 #[derive(Default)]
 pub struct HashmapUserStore {
-    users: HashMap<String, User>
+    users: HashMap<Email, User>
 }
 
 #[async_trait::async_trait]
@@ -19,16 +19,16 @@ impl UserStore for HashmapUserStore {
         }
     }
 
-    async fn get_user(&self, email: &str) -> Result<User, UserStoreError> {
+    async fn get_user(&self, email: &Email) -> Result<User, UserStoreError> {
         self.users
             .get(email)
             .cloned()
             .ok_or(UserStoreError::UserNotFound)
     }
 
-    async fn validate_user(&self, email: &str, password: &str) -> Result<(), UserStoreError> {
-        match self.users.get(email) {
-            Some(user) => if user.password.eq(password) {
+    async fn validate_user(&self, email: &Email, password: &Password) -> Result<(), UserStoreError> {
+        match self.users.get(&email) {
+            Some(user) => if user.password.eq(&password) {
                 Ok(())
             } else {
                 Err(UserStoreError::InvalidCredentials)
@@ -43,10 +43,10 @@ mod tests {
 
     use super::*;
 
-    fn setup() -> (HashmapUserStore, String, String, User) {
+    fn setup() -> (HashmapUserStore, Email, Password, User) {
         let user_store = HashmapUserStore::default();
-        let email = "kevin@mail.com".to_owned();
-        let password = "supertricky".to_owned();
+        let email = Email::parse("kevin@mail.com".to_owned()).unwrap();
+        let password = Password::parse("supertricky".to_owned()).unwrap();
         let test_user = User {
             email: email.clone(),
             password: password.clone(),
@@ -78,7 +78,8 @@ mod tests {
         assert_eq!(result, Ok(test_user));
 
         // Test getting a user that doesn't exist
-        let result = user_store.get_user("me@mail.com").await;
+        let parsed_email = Email::parse("me@mail.com".to_string()).unwrap();
+        let result = user_store.get_user(&parsed_email).await;
         assert_eq!(result, Err(UserStoreError::UserNotFound))
     }
 
@@ -96,16 +97,16 @@ mod tests {
         assert!(result.is_ok());
 
         // validate user with correct email but wrong password
-        let non_existent_email = "me@mail.com";
-        let non_existent_password = "mywrongpassword";
+        let non_existent_email = Email::parse("me@mail.com".to_string()).unwrap();
+        let non_existent_password = Password::parse("mywrongpassword".to_string()).unwrap();
         let result = user_store
-            .validate_user(&email, non_existent_email)
+            .validate_user(&email, &non_existent_password)
             .await;
         assert_eq!(result, Err(UserStoreError::InvalidCredentials));
 
         // check if user doesn't exist
         let result = user_store
-            .validate_user(non_existent_email, non_existent_password)
+            .validate_user(&non_existent_email, &non_existent_password)
             .await;
         assert_eq!(result, Err(UserStoreError::UserNotFound));
 
