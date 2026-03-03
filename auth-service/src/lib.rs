@@ -15,6 +15,7 @@ use routes::{signup, login, logout, verify_2fa, verify_token};
 pub mod domain;
 pub mod services;
 pub mod app_state;
+pub mod utils;
 use domain::AuthAPIError;
 use app_state::AppState;
 
