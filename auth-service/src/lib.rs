@@ -1,5 +1,4 @@
 use std::error::Error;
-use std::env;
 
 use axum::{
     Json, Router, http::{Method, StatusCode}, response::IntoResponse, routing::post
@@ -16,6 +15,32 @@ pub mod app_state;
 pub mod utils;
 use domain::AuthAPIError;
 use app_state::AppState;
+use lazy_static::lazy_static;
+use std::env;
+use dotenvy::{dotenv,from_filename};
+use axum::http::HeaderValue;
+
+// Define a lazily evaluated static. lazy_static is needed because std_env::var is not a const function.
+pub const DROPLET_IP_ENV_VAR: &str = "DROPLET_IP";
+lazy_static! {
+    pub static ref DROPLET_ORIGINS: Vec<HeaderValue> = build_allowed_origins();
+}
+
+fn build_allowed_origins() -> Vec<HeaderValue> {
+    // Try cwd, then workspace-root path
+    dotenv().ok();
+    from_filename("auth-service/.env").ok();
+
+    let mut origins = vec![
+        HeaderValue::from_str("http://localhost:8000").expect("valid localhost origin")
+    ];
+    if let Ok(ip) = env::var(DROPLET_IP_ENV_VAR) {
+        if let Ok(hv) = HeaderValue::from_str(&format!("http://{}:8000", ip)) {
+            origins.push(hv);
+        }
+    }
+    origins
+}
 
 // This struct encapsulates our application-related logic.
 pub struct Application {
@@ -29,17 +54,14 @@ impl Application {
     pub async fn build(app_state: AppState, address: &str) -> Result<Self, Box<dyn Error>> {
 
         // Allow the app service(running on our local machine and in production) to call the auth service
-        let mut allowed_origins = vec!["http://localhost:8000".parse()?];
-        if let Ok(droplet_ip) = env::var("DROPLET_IP") {
-            allowed_origins.push(format!("http://{}:8000", droplet_ip).parse()?);
-        }
+        // let allowed_origins = build_allowed_origins();
 
         let cors = CorsLayer::new()
             // Allow GET and POST requests
             .allow_methods([Method::GET, Method::POST])
             // Allow cookies to be included in requests
             .allow_credentials(true)
-            .allow_origin(allowed_origins);
+            .allow_origin(DROPLET_ORIGINS.clone());
 
         // Move the Router definition from `main.rs` to here.
         let router = Router::new()
