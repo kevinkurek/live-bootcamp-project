@@ -1,13 +1,11 @@
 use std::error::Error;
+use std::env;
 
 use axum::{
-    http::StatusCode,
-    response::{IntoResponse},
-    routing::post,
-    Json, Router,
+    Json, Router, http::{Method, StatusCode}, response::IntoResponse, routing::post
 };
 use serde::{Serialize, Deserialize};
-use tower_http::services::ServeDir;
+use tower_http::{cors::CorsLayer, services::ServeDir};
 
 pub mod routes;
 use routes::{signup, login, logout, verify_2fa, verify_token};
@@ -29,6 +27,20 @@ pub struct Application {
 
 impl Application {
     pub async fn build(app_state: AppState, address: &str) -> Result<Self, Box<dyn Error>> {
+
+        // Allow the app service(running on our local machine and in production) to call the auth service
+        let mut allowed_origins = vec!["http://localhost:8000".parse()?];
+        if let Ok(droplet_ip) = env::var("DROPLET_IP") {
+            allowed_origins.push(format!("http://{}:8000", droplet_ip).parse()?);
+        }
+
+        let cors = CorsLayer::new()
+            // Allow GET and POST requests
+            .allow_methods([Method::GET, Method::POST])
+            // Allow cookies to be included in requests
+            .allow_credentials(true)
+            .allow_origin(allowed_origins);
+
         // Move the Router definition from `main.rs` to here.
         let router = Router::new()
             .nest_service("/", ServeDir::new("assets"))
@@ -37,7 +49,8 @@ impl Application {
             .route("/logout", post(logout))
             .route("/verify-2fa", post(verify_2fa))
             .route("/verify-token", post(verify_token))
-            .with_state(app_state);
+            .with_state(app_state)
+            .layer(cors);
 
         let listener = tokio::net::TcpListener::bind(address).await?;
         let address = listener.local_addr()?.to_string();
@@ -67,6 +80,8 @@ impl IntoResponse for AuthAPIError {
             AuthAPIError::UnexpectedError => {
                 (StatusCode::INTERNAL_SERVER_ERROR, "Unexpected error")
             }
+            AuthAPIError::MissingToken => (StatusCode::BAD_REQUEST, "Missing auth token"),
+            AuthAPIError::InvalidToken => (StatusCode::UNAUTHORIZED, "Invalid auth token"),
         };
         let body = Json(ErrorResponse {
             error: error_message.to_string(),

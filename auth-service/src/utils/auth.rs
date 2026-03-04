@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::email::Email;
 
-use super::constants::{JWT_COOKIE_NAME, JWT_SECRET};
+use super::constants::{JWT_COOKIE_NAME, JWT_SECRET, TOKEN_TTL_SECONDS};
 
 /*
 generate_auth_cookie builds a JWT (generate_auth_token) from the provided email, wraps it in an Axum Cookie, 
@@ -38,9 +38,6 @@ pub enum GenerateTokenError {
     TokenError(jsonwebtoken::errors::Error),
     UnexpectedError,
 }
-
-// This value determines how long the JWT auth token is valid for
-pub const TOKEN_TTL_SECONDS: i64 = 600; // 10 minutes
 
 // Create JWT auth token
 fn generate_auth_token(email: &Email) -> Result<String, GenerateTokenError> {
