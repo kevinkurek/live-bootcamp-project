@@ -70,6 +70,57 @@ async fn should_return_401_if_invalid_token() {
 }
 
 #[tokio::test]
+async fn should_return_401_if_banned_token() {
+    let app = TestApp::new().await;
+    let email = get_random_email();
+
+    // sign up
+    let signup_body = serde_json::json!({
+        "email": email,
+        "password": "password123",
+        "requires2FA": false
+    });
+    let response = app.post_signup(&signup_body).await;
+    assert_eq!(response.status().as_u16(), 201);
+
+    // login
+    let login_body = serde_json::json!({
+        "email": email,
+        "password": "password123"
+    });
+    let response = app.post_login(&login_body).await;
+    assert_eq!(response.status().as_u16(), 200);
+
+    // check auth_cookie associated with login isn't empty, define it as token
+    let auth_cookie = response
+        .cookies()
+        .find(|cookie| cookie.name() == JWT_COOKIE_NAME)
+        .expect("No auth cookie found");
+    assert!(!auth_cookie.value().is_empty());
+    let token = auth_cookie.value();
+
+    // logout
+    let response = app.post_logout().await;
+    assert_eq!(response.status().as_u16(), 200);
+
+    // token should be banned now after a logout
+    let verify_token_body = serde_json::json!({
+        "token": token
+    });
+    let response = app.post_verify_token(&verify_token_body).await;
+    assert_eq!(response.status().as_u16(), 401); // should fail and token should be invalid
+
+    assert_eq!(
+        response
+            .json::<ErrorResponse>()
+            .await
+            .expect("Could not deserialize response body to ErrorResponse")
+            .error,
+        "Invalid auth token".to_owned()
+    );
+}
+
+#[tokio::test]
 async fn should_return_422_if_malformed_input() {
     let app = TestApp::new().await;
 

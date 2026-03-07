@@ -34,7 +34,7 @@ async fn should_return_200_if_valid_jwt_cookie() {
     assert!(!auth_cookie.value().is_empty());
 
     // log them out
-    let _token = auth_cookie.value();
+    let token = auth_cookie.value();
     let response = app.post_logout().await;
     assert_eq!(response.status().as_u16(), 200);
 
@@ -44,6 +44,15 @@ async fn should_return_200_if_valid_jwt_cookie() {
         .expect("No auth cookie found");
 
     assert!(auth_cookie.value().is_empty());
+
+    // check if banned_token_store contains JWT auth token after user logs out
+    let banned_token_store = app.banned_token_store.read().await;
+    let contains_token = banned_token_store
+        .contains_token(token)
+        .await
+        .expect("Failed to check if token is banned");
+
+    assert!(contains_token);
 
 }
 

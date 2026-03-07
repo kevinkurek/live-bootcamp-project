@@ -3,6 +3,17 @@ use crate::domain::{Email, Password};
 use super::User;
 
 #[async_trait::async_trait]
+pub trait BannedTokenStore {
+    async fn add_token(&mut self, token: String) -> Result<(), BannedTokenStoreError>;
+    async fn contains_token(&self, token: &str) -> Result<bool, BannedTokenStoreError>;
+}
+
+#[derive(Debug)]
+pub enum BannedTokenStoreError {
+    UnexpectedError,
+}
+
+#[async_trait::async_trait]
 pub trait UserStore {
     // Add the `add_user`, `get_user`, and `validate_user` methods.
     // Make sure all methods are async so we can use async user stores in the future
