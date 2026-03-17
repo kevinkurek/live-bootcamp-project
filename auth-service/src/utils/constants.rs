@@ -5,15 +5,11 @@ use axum::http::HeaderValue;
 
 // Define a lazily evaluated static. lazy_static is needed because std_env::var is not a const function.
 lazy_static! {
-    pub static ref DROPLET_ORIGINS: Vec<HeaderValue> = build_allowed_origins();
-}
-
-lazy_static! {
     pub static ref JWT_SECRET: String = set_token();
-}
-
-lazy_static! {
     pub static ref DATABASE_URL: String = set_db_url();
+    // pub static ref REDIS_HOST_NAME: String = set_redis_host();
+    pub static ref DROPLET_ORIGINS: Vec<HeaderValue> = build_allowed_origins();
+
 }
 
 
