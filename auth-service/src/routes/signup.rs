@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     app_state::AppState, 
-    domain::{AuthAPIError, User, Email, Password}
+    domain::{AuthAPIError, User, Email, HashedPassword}
 };
 
 pub async fn signup(
@@ -14,7 +14,8 @@ pub async fn signup(
     // we don't have to write validation logic here.
     let email = Email::parse(request.email.clone())
         .map_err(|_| AuthAPIError::InvalidCredentials)?;
-    let password = Password::parse(request.password.clone())
+    let password = HashedPassword::parse(request.password.clone())
+        .await
         .map_err(|_| AuthAPIError::InvalidCredentials)?;
 
     // define a user from incoming request data
