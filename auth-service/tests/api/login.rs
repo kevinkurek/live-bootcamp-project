@@ -8,7 +8,7 @@ use auth_service::{
 
 #[tokio::test]
 async fn should_return_200_if_valid_credentials_and_2fa_disabled() {
-    let app = TestApp::new().await;
+    let mut app = TestApp::new().await;
     let random_email = get_random_email();
 
     let signup_body = serde_json::json!({
@@ -34,6 +34,9 @@ async fn should_return_200_if_valid_credentials_and_2fa_disabled() {
         .expect("No auth cookie found");
 
     assert!(!auth_cookie.value().is_empty());
+
+    // Clean up the test app to ensure it doesn't affect other tests
+    app.clean_up().await;
 }
 
 #[tokio::test]
