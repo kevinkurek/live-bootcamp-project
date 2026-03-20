@@ -1,8 +1,9 @@
 use auth_service::{ErrorResponse, utils::constants::JWT_COOKIE_NAME};
 
 use crate::helpers::{TestApp, get_random_email};
+use test_helpers::api_test;
 
-#[tokio::test]
+#[api_test]
 async fn should_return_200_valid_token() {
     let app = TestApp::new().await;
 
@@ -45,7 +46,7 @@ async fn should_return_200_valid_token() {
     assert_eq!(response.status().as_u16(), 200);
 }
 
-#[tokio::test]
+#[api_test]
 async fn should_return_401_if_invalid_token() {
     let app = TestApp::new().await;
 
@@ -69,7 +70,7 @@ async fn should_return_401_if_invalid_token() {
     }
 }
 
-#[tokio::test]
+#[api_test]
 async fn should_return_401_if_banned_token() {
     let app = TestApp::new().await;
     let email = get_random_email();
@@ -120,7 +121,7 @@ async fn should_return_401_if_banned_token() {
     );
 }
 
-#[tokio::test]
+#[api_test]
 async fn should_return_422_if_malformed_input() {
     let app = TestApp::new().await;
 
