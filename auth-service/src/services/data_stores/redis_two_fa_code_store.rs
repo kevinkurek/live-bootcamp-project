@@ -60,7 +60,7 @@ impl TwoFACodeStore for RedisTwoFACodeStore {
             .conn
             .write()
             .await
-            .del(&key)
+            .del::<_, ()>(&key)
             .map_err(|_| TwoFACodeStoreError::UnexpectedError)?;
         // Return TwoFACodeStoreError::UnexpectedError if the operation fails.
 
