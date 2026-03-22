@@ -56,13 +56,12 @@ impl TwoFACodeStore for RedisTwoFACodeStore {
         // 1. Create a new key using the get_key helper function.
         let key = get_key(&email);
         // 2. Call the del command on the Redis connection to delete the 2FA code entry. 
-        self
+        let _: () = self
             .conn
             .write()
             .await
-            .del::<_, ()>(&key)
+            .del(&key)
             .map_err(|_| TwoFACodeStoreError::UnexpectedError)?;
-        // Return TwoFACodeStoreError::UnexpectedError if the operation fails.
 
         Ok(())
     }
