@@ -6,6 +6,7 @@ use crate::{
     domain::{AuthAPIError, User, Email, HashedPassword}
 };
 
+#[tracing::instrument(name = "Signup", skip_all)]
 pub async fn signup(
     State(state): State<AppState>,
     Json(request): Json<SignupRequest>) -> Result<impl IntoResponse, AuthAPIError> {

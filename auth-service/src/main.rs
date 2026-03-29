@@ -1,15 +1,17 @@
-use std::sync::Arc;
+use std::{env, sync::Arc};
 use sqlx::PgPool;
 use tokio::sync::RwLock;
 use auth_service::{Application, 
     app_state::AppState, get_postgres_pool, get_redis_client, 
     services::{MockEmailClient, 
         data_stores::{PostgresUserStore, RedisBannedTokenStore, RedisTwoFACodeStore}}, 
-        utils::constants::{DATABASE_URL, REDIS_HOST_NAME, prod}
+        utils::{constants::{DATABASE_URL, REDIS_HOST_NAME, prod}, tracing::init_tracing}
 };
 
 #[tokio::main]
 async fn main() {
+
+    init_tracing();
 
     // We will use this PostgreSQL pool in the next task! 
     let pg_pool = configure_postgresql().await;
@@ -30,7 +32,9 @@ async fn main() {
         mock_email_client,
     );
 
-    let app = Application::build(app_state, prod::APP_ADDRESS)
+    let app_address = env::var("APP_ADDRESS").unwrap_or_else(|_| prod::APP_ADDRESS.to_string());
+
+    let app = Application::build(app_state, &app_address)
         .await
         .expect("Failed to build app");
 
