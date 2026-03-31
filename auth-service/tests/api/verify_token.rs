@@ -5,8 +5,6 @@ use test_helpers::api_test;
 
 #[api_test]
 async fn should_return_200_valid_token() {
-    let app = TestApp::new().await;
-
     let random_email = get_random_email();
 
     let signup_body = serde_json::json!({
@@ -48,8 +46,6 @@ async fn should_return_200_valid_token() {
 
 #[api_test]
 async fn should_return_401_if_invalid_token() {
-    let app = TestApp::new().await;
-
     let test_cases = vec!["", "invalid_token"];
 
     for test_case in test_cases {
@@ -72,7 +68,6 @@ async fn should_return_401_if_invalid_token() {
 
 #[api_test]
 async fn should_return_401_if_banned_token() {
-    let app = TestApp::new().await;
     let email = get_random_email();
 
     // sign up
@@ -123,8 +118,6 @@ async fn should_return_401_if_banned_token() {
 
 #[api_test]
 async fn should_return_422_if_malformed_input() {
-    let app = TestApp::new().await;
-
     let test_cases = vec![
         serde_json::json!({
             "token": true,

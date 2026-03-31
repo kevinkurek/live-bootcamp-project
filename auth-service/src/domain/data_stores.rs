@@ -1,40 +1,57 @@
+use color_eyre::eyre::{eyre, Report, Result};
 use rand::Rng;
-use uuid::Uuid;
+use secrecy::{ExposeSecret, SecretString};
+use thiserror::Error;
 
-use crate::domain::{Email};
-
-use super::User;
-
-#[async_trait::async_trait]
-pub trait BannedTokenStore {
-    async fn add_token(&mut self, token: String) -> Result<(), BannedTokenStoreError>;
-    async fn contains_token(&self, token: &str) -> Result<bool, BannedTokenStoreError>;
-}
-
-#[derive(Debug)]
-pub enum BannedTokenStoreError {
-    UnexpectedError,
-}
+use super::{Email, User};
 
 #[async_trait::async_trait]
 pub trait UserStore {
-    // Add the `add_user`, `get_user`, and `validate_user` methods.
-    // Make sure all methods are async so we can use async user stores in the future
     async fn add_user(&mut self, user: User) -> Result<(), UserStoreError>;
     async fn get_user(&self, email: &Email) -> Result<User, UserStoreError>;
-    async fn validate_user(&self, email: &Email, raw_password: &str) -> Result<(), UserStoreError>;
+    async fn validate_user(
+        &self,
+        email: &Email,
+        raw_password: &SecretString,
+    ) -> Result<(), UserStoreError>;
 }
 
-
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Error)]
 pub enum UserStoreError {
+    #[error("User already exists")]
     UserAlreadyExists,
+    #[error("User not found")]
     UserNotFound,
+    #[error("Invalid credentials")]
     InvalidCredentials,
-    UnexpectedError
+    #[error("Unexpected error")]
+    UnexpectedError(#[source] Report),
 }
 
-// This trait represents the interface all concrete 2FA code stores should implement
+impl PartialEq for UserStoreError {
+    fn eq(&self, other: &Self) -> bool {
+        matches!(
+            (self, other),
+            (Self::UserAlreadyExists, Self::UserAlreadyExists)
+                | (Self::UserNotFound, Self::UserNotFound)
+                | (Self::InvalidCredentials, Self::InvalidCredentials)
+                | (Self::UnexpectedError(_), Self::UnexpectedError(_))
+        )
+    }
+}
+
+#[async_trait::async_trait]
+pub trait BannedTokenStore {
+    async fn add_token(&mut self, token: SecretString) -> Result<(), BannedTokenStoreError>;
+    async fn contains_token(&self, token: &SecretString) -> Result<bool, BannedTokenStoreError>;
+}
+
+#[derive(Debug, Error)]
+pub enum BannedTokenStoreError {
+    #[error("Unexpected error")]
+    UnexpectedError(#[source] Report),
+}
+
 #[async_trait::async_trait]
 pub trait TwoFACodeStore {
     async fn add_code(
@@ -50,68 +67,88 @@ pub trait TwoFACodeStore {
     ) -> Result<(LoginAttemptId, TwoFACode), TwoFACodeStoreError>;
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Error)]
 pub enum TwoFACodeStoreError {
+    #[error("Login Attempt ID not found")]
     LoginAttemptIdNotFound,
-    UnexpectedError,
+    #[error("Unexpected error")]
+    UnexpectedError(#[source] Report),
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct LoginAttemptId(String);
+impl PartialEq for TwoFACodeStoreError {
+    fn eq(&self, other: &Self) -> bool {
+        matches!(
+            (self, other),
+            (Self::LoginAttemptIdNotFound, Self::LoginAttemptIdNotFound)
+                | (Self::UnexpectedError(_), Self::UnexpectedError(_))
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct LoginAttemptId(SecretString);
+
+impl PartialEq for LoginAttemptId {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.expose_secret() == other.0.expose_secret()
+    }
+}
 
 impl LoginAttemptId {
-    pub fn parse(id: String) -> Result<Self, String> {
-        // Use the `parse_str` function from the `uuid` crate to ensure `id` is a valid UUID
-        match Uuid::parse_str(&id) {
-            Ok(_) => Ok(LoginAttemptId(id)),
-            Err(_) => Err("Invalid UUID".to_string())
-        }
+    pub fn parse(id: SecretString) -> Result<Self> {
+        let id = uuid::Uuid::parse_str(id.expose_secret())
+            .map_err(|_| eyre!("Invalid login attempt id"))?;
+        Ok(Self(SecretString::new(id.to_string().into_boxed_str())))
     }
 }
 
 impl Default for LoginAttemptId {
     fn default() -> Self {
-        // Use the `uuid` crate to generate a random version 4 UUID
-        let uuid = Uuid::new_v4();
-        Self(uuid.to_string())
+        Self(SecretString::new(
+            uuid::Uuid::new_v4().to_string().into_boxed_str(),
+        ))
     }
 }
 
-// AsRef<str> for LoginAttemptId
-impl AsRef<str> for LoginAttemptId {
-    fn as_ref(&self) -> &str {
+impl AsRef<SecretString> for LoginAttemptId {
+    fn as_ref(&self) -> &SecretString {
         &self.0
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct TwoFACode(String);
+#[derive(Clone, Debug)]
+pub struct TwoFACode(SecretString);
+
+impl PartialEq for TwoFACode {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.expose_secret() == other.0.expose_secret()
+    }
+}
 
 impl TwoFACode {
-    pub fn parse(code: String) -> Result<Self, String> {
-        // Ensure `code` is a valid 6-digit code
-        let code_u32 = code
-            .parse::<u32>()
-            .map_err(|_| "Invalid 2FA code".to_string())?;
-        if (100000..999999).contains(&code_u32) {
+    pub fn parse(code: SecretString) -> Result<Self> {
+        let code_as_u32 = code.expose_secret().parse::<u32>()?;
+        if (100_000..=999_999).contains(&code_as_u32) {
             Ok(Self(code))
         } else {
-            Err("Invalid 2FA code".to_string())
+            Err(eyre!("Invalid email code"))
         }
     }
 }
 
 impl Default for TwoFACode {
     fn default() -> Self {
-        // Use the `rand` crate to generate a random 2FA code.
-        // The code should be 6 digits (ex: 834629)
-        Self(rand::rng().random_range(100000..999999).to_string())
+        Self(SecretString::new(
+            rand::rng()
+                .random_range(100_000..=999_999)
+                .to_string()
+                .into_boxed_str(),
+        ))
     }
 }
 
-// Implement AsRef<str> for TwoFACode
-impl AsRef<str> for TwoFACode {
-    fn as_ref(&self) -> &str {
+impl AsRef<SecretString> for TwoFACode {
+    fn as_ref(&self) -> &SecretString {
         &self.0
     }
 }

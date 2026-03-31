@@ -5,8 +5,6 @@ use test_helpers::api_test;
 
 #[api_test]
 async fn should_return_400_if_invalid_input() {
-    let app = TestApp::new().await;
-
     // The input is considered invalid if:
     // - The email is empty or does not contain '@'
     // - The password is less than 8 characters
@@ -57,7 +55,6 @@ async fn should_return_400_if_invalid_input() {
 
 #[api_test]
 async fn should_return_409_if_email_exits() {
-    let app = TestApp::new().await;
     let user = serde_json::json!({
             "email": "avaliduser@mail.com",
             "password": "avalidpassword",
@@ -88,7 +85,6 @@ async fn should_return_409_if_email_exits() {
 
 #[api_test]
 async fn should_return_201_if_valid_input() {
-    let app = TestApp::new().await;
     let random_email = get_random_email();
 
     let test_case = serde_json::json!({
@@ -117,7 +113,6 @@ async fn should_return_201_if_valid_input() {
 
 #[api_test]
 async fn should_return_422_if_malformed_input() {
-    let app = TestApp::new().await;
     let random_email = get_random_email();
 
     let test_cases = [

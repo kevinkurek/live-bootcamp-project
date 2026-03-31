@@ -1,15 +1,15 @@
 use crate::helpers::{get_random_email, TestApp};
-use auth_service::{
-    domain::Email,
-    routes::TwoFactorAuthResponse,
-    utils::constants::JWT_COOKIE_NAME,
-    ErrorResponse,
-};
+use auth_service::domain::Email;
+use auth_service::routes::TwoFactorAuthResponse;
+use auth_service::utils::constants::JWT_COOKIE_NAME;
+use auth_service::ErrorResponse;
+use secrecy::{ExposeSecret, SecretString};
 use test_helpers::api_test;
+use wiremock::matchers::{method, path};
+use wiremock::{Mock, ResponseTemplate};
 
 #[api_test]
 async fn should_return_200_if_valid_credentials_and_2fa_disabled() {
-    let app = TestApp::new().await;
     let random_email = get_random_email();
 
     let signup_body = serde_json::json!({
@@ -19,6 +19,7 @@ async fn should_return_200_if_valid_credentials_and_2fa_disabled() {
     });
 
     let response = app.post_signup(&signup_body).await;
+
     assert_eq!(response.status().as_u16(), 201);
 
     let login_body = serde_json::json!({
@@ -27,6 +28,7 @@ async fn should_return_200_if_valid_credentials_and_2fa_disabled() {
     });
 
     let response = app.post_login(&login_body).await;
+
     assert_eq!(response.status().as_u16(), 200);
 
     let auth_cookie = response
@@ -39,7 +41,6 @@ async fn should_return_200_if_valid_credentials_and_2fa_disabled() {
 
 #[api_test]
 async fn should_return_206_if_valid_credentials_and_2fa_enabled() {
-    let app = TestApp::new().await;
     let random_email = get_random_email();
 
     let signup_body = serde_json::json!({
@@ -49,14 +50,23 @@ async fn should_return_206_if_valid_credentials_and_2fa_enabled() {
     });
 
     let response = app.post_signup(&signup_body).await;
+
     assert_eq!(response.status().as_u16(), 201);
+
+    Mock::given(path("/email"))
+        .and(method("POST"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&app.email_server)
+        .await;
 
     let login_body = serde_json::json!({
         "email": random_email,
-        "password": "password123",
+        "password": "password123"
     });
 
     let response = app.post_login(&login_body).await;
+
     assert_eq!(response.status().as_u16(), 206);
 
     let json_body = response
@@ -64,36 +74,82 @@ async fn should_return_206_if_valid_credentials_and_2fa_enabled() {
         .await
         .expect("Could not deserialize response body to TwoFactorAuthResponse");
 
-    // assert that `json_body.login_attempt_id` is stored inside `app.two_fa_code_store`
     assert_eq!(json_body.message, "2FA required".to_owned());
+
     let two_fa_code_store = app.two_fa_code_store.read().await;
 
     let code_tuple = two_fa_code_store
-        .get_code(&Email::parse(random_email).unwrap())
+        .get_code(&Email::parse(SecretString::new(random_email.into_boxed_str())).unwrap())
         .await
         .expect("Failed to get 2FA code");
 
-    assert_eq!(code_tuple.0.as_ref(), json_body.login_attempt_id);
+    assert_eq!(
+        code_tuple.0.as_ref().expose_secret(),
+        &json_body.login_attempt_id
+    );
+}
+
+#[api_test]
+async fn should_return_400_if_invalid_input() {
+    let random_email = get_random_email();
+
+    let signup_body = serde_json::json!({
+        "email": random_email,
+        "password": "password123",
+        "requires2FA": false
+    });
+
+    let response = app.post_signup(&signup_body).await;
+
+    assert_eq!(response.status().as_u16(), 201);
+
+    let test_cases = vec![
+        ("invalid_email", "password123"),
+        (random_email.as_str(), "invalid"),
+        ("", "password123"),
+        (random_email.as_str(), ""),
+        ("", ""),
+    ];
+
+    for (email, password) in test_cases {
+        let login_body = serde_json::json!({
+            "email": email,
+            "password": password
+        });
+        let response = app.post_login(&login_body).await;
+
+        assert_eq!(
+            response.status().as_u16(),
+            400,
+            "Failed for input: {:?}",
+            login_body
+        );
+
+        assert_eq!(
+            response
+                .json::<ErrorResponse>()
+                .await
+                .expect("Could not deserialize response body to ErrorResponse")
+                .error,
+            "Invalid credentials".to_owned()
+        );
+    }
 }
 
 #[api_test]
 async fn should_return_401_if_incorrect_credentials() {
-    // Call the log-in route with incorrect credentials and assert
-    // that a 401 HTTP status code is returned along with the appropriate error message.     
-
-    let app = TestApp::new().await;
     let random_email = get_random_email();
 
-    // signup
     let signup_body = serde_json::json!({
         "email": random_email,
-        "password": "mypassword",
-        "requires2FA": false,
+        "password": "password123",
+        "requires2FA": false
     });
+
     let response = app.post_signup(&signup_body).await;
+
     assert_eq!(response.status().as_u16(), 201);
 
-    // check login failure
     let test_cases = vec![
         (random_email.as_str(), "wrong-password"),
         ("wrong@email.com", "password123"),
@@ -126,61 +182,7 @@ async fn should_return_401_if_incorrect_credentials() {
 }
 
 #[api_test]
-async fn should_return_400_if_invalid_input() {
-    // Call the log-in route with invalid credentials and assert that a
-    // 400 HTTP status code is returned along with the appropriate error message. 
-
-    let app = TestApp::new().await;
-    let random_email = get_random_email();
-
-    let signup_body = serde_json::json!({
-        "email": random_email,
-        "password": "password123",
-        "requires2FA": false,
-    });
-
-    // sign someone up
-    let response = app.post_signup(&signup_body).await;
-    assert_eq!(response.status().as_u16(), 201);
-
-    // check invalid credentials returned
-    let test_cases = vec![
-        ("invalid_email", "password123"),
-        (random_email.as_str(), "invalid"),
-        ("", "password123"),
-        (random_email.as_str(), ""),
-        ("", ""),
-    ];
-
-    for (email, password) in test_cases {
-        let login_body = serde_json::json!({
-            "email": email,
-            "password": password
-        });
-        let response = app.post_login(&login_body).await;
-
-        assert_eq!(
-            response.status().as_u16(),
-            400,
-            "Failed for input: {:?}",
-            login_body
-        );
-
-        assert_eq!(
-                response
-                    .json::<ErrorResponse>()
-                    .await
-                    .expect("Could not deserialize response body to ErrorResponse")
-                    .error,
-                "Invalid credentials".to_owned()
-            );
-    }
-
-}
-
-#[api_test]
 async fn should_return_422_if_malformed_credentials() {
-    let app = TestApp::new().await;
     let random_email = get_random_email();
 
     let signup_body = serde_json::json!({
@@ -191,24 +193,26 @@ async fn should_return_422_if_malformed_credentials() {
 
     let response = app.post_signup(&signup_body).await;
 
-    // check that a random email and password were created, then check login
     assert_eq!(response.status().as_u16(), 201);
 
     let test_cases = [
-
-        // missing email
         serde_json::json!({
-        "password": "password123",
-        "requires2FA": false,
-        })
+            "password": "password123",
+        }),
+        serde_json::json!({
+            "email": random_email,
+        }),
+        serde_json::json!({}),
     ];
 
-    for test in test_cases.iter() {
-        let response = app.post_login(test).await;
-        assert_eq!(response.status().as_u16(), 
-                    422,
-                    "Failed for input, {:?}",
-                    test
-                );
+    for test_case in test_cases {
+        let response = app.post_login(&test_case).await;
+
+        assert_eq!(
+            response.status().as_u16(),
+            422,
+            "Failed for input: {:?}",
+            test_case
+        );
     }
 }
